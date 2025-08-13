@@ -3,7 +3,7 @@ name: Build mR-NB
 on:
   push:
     branches:
-      - v1.78.2-dev
+      - woa
   
 jobs:
   Build-Release:
