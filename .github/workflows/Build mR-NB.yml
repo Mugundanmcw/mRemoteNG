@@ -3,13 +3,23 @@ name: Build mR-NB
 on:
   push:
     branches:
-      - v1.78.2-dev
+      - woa
   
 jobs:
   Build-Release:
-    runs-on: windows-2022
+    strategy:
+      matrix:
+        include:
+          - os: windows-2022
+            platform: x64
+            architecture: x64
+          - os: windows-11-arm
+            platform: ARM64
+            architecture: arm64
+    runs-on: ${{ matrix.os }}
     outputs:
-      zipname: ${{ steps.version.outputs.zipname }}
+      zipname-x64: ${{ steps.version.outputs.zipname-x64 }}
+      zipname-arm64: ${{ steps.version.outputs.zipname-arm64 }}
       version: ${{ steps.version.outputs.version }}
       build: ${{ steps.version.outputs.build }}
     steps:
@@ -32,9 +42,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-${{ matrix.architecture }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            ${{ runner.os }}-nuget-
+            ${{ runner.os }}-${{ matrix.architecture }}-nuget-
 
       - name: 05. Restore NuGet Packages
         shell: pwsh
@@ -42,7 +52,7 @@ jobs:
 
       - name: 06. Build Release
         shell: pwsh
-        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=x64 /verbosity:minimal
+        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.platform }} /verbosity:minimal
 
       - name: 07. Generate Version Info
         id: version
@@ -57,14 +67,18 @@ jobs:
             throw "Could not extract version and build number"
           }
           $date = Get-Date -Format "ddMMyyyy"
-          $zipName = "mRemoteNG-$version-(NB_$build)_$date.zip"
-          echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
+          $architecture = "${{ matrix.architecture }}"
+          $zipName = "mRemoteNG-$version-(NB_$build)_${date}_$architecture.zip"
+          
+          echo "zipname-$architecture=$zipName" >> $env:GITHUB_OUTPUT
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "build=$build" >> $env:GITHUB_OUTPUT
           
       - name: 08. Upload Release Output as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.zipname }}
-          path: ${{ github.workspace }}\mRemoteNG\bin\x64\Release\win-x64\*
+          name: mRemoteNG-${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}-${{ matrix.architecture }}
+          path: ${{ github.workspace }}\mRemoteNG\bin\${{ matrix.platform }}\Release\win-${{ matrix.architecture }}\*
 
   Create-Release:
     needs: [Build-Release]
@@ -77,34 +91,51 @@ jobs:
       - name: 01. Checkout Repository
         uses: actions/checkout@v4
         
-      - name: 02. Download Artifact
+      - name: 02a. Download x64 Artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.Build-Release.outputs.zipname }}
-          path: ./
+          name: mRemoteNG-${{ needs.Build-Release.outputs.version }}-${{ needs.Build-Release.outputs.build }}-x64
+          path: ./artifacts/x64/
+
+      - name: 02b. Download ARM64 Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mRemoteNG-${{ needs.Build-Release.outputs.version }}-${{ needs.Build-Release.outputs.build }}-arm64
+          path: ./artifacts/arm64/
+
+      - name: 02c. Create ZIP files
+        shell: bash
+        run: |
+          cd artifacts/x64
+          zip -r "../../${{ needs.Build-Release.outputs.zipname-x64 }}" .
+          cd ../arm64
+          zip -r "../../${{ needs.Build-Release.outputs.zipname-arm64 }}" .
+          cd ../..
 
       - name: !!!. Debug Info
         run: |
           echo "=== DEBUG: Job Outputs ==="
-          echo "Zipname: ${{ needs.Build-Release.outputs.zipname }}"
+          echo "Zipname x64: ${{ needs.Build-Release.outputs.zipname-x64 }}"
+          echo "Zipname ARM64: ${{ needs.Build-Release.outputs.zipname-arm64 }}"
           echo "Version: ${{ needs.Build-Release.outputs.version }}"
           echo "Build: ${{ needs.Build-Release.outputs.build }}"
           echo "=== DEBUG: Files ==="
           ls -la
 
           
-      - name: 03. Create Release and Upload Asset
+      - name: 03. Create Release and Upload Assets
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Create tag name
           TAG="v${{ needs.Build-Release.outputs.version }}-${{ needs.Build-Release.outputs.build }}-${GITHUB_RUN_NUMBER}"
-          echo "Tag: "v${{ needs.Build-Release.outputs.version }}-${{ needs.Build-Release.outputs.build }}-${GITHUB_RUN_NUMBER}""
+          echo "Tag: v${{ needs.Build-Release.outputs.version }}-${{ needs.Build-Release.outputs.build }}-${GITHUB_RUN_NUMBER}"
           
-          # Create release with tag and attach artifact
+          # Create release with tag and attach both artifacts
           gh release create "$TAG" \
             --title "mRemoteNG ${{ needs.Build-Release.outputs.version }} Build ${{ needs.Build-Release.outputs.build }}" \
-            --notes "Development build of mRemoteNG version ${{ needs.Build-Release.outputs.version }}" \
+            --notes "Development build of mRemoteNG version ${{ needs.Build-Release.outputs.version }} - Available for both x64 and ARM64 architectures" \
             --prerelease \
-            "${{ needs.Build-Release.outputs.zipname }}"
+            "${{ needs.Build-Release.outputs.zipname-x64 }}" \
+            "${{ needs.Build-Release.outputs.zipname-arm64 }}"
