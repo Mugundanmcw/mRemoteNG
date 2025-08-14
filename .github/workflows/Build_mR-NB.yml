@@ -77,7 +77,7 @@ jobs:
       - name: (08) Create Zip File
         shell: pwsh
         run: |
-          $sourceDir = "$Env:GITHUB_WORKSPACE\mRemoteNG\bin\${{ matrix.platform }}\Release\win-${{ matrix.arch }}"
+          $sourceDir = "$Env:GITHUB_WORKSPACE\mRemoteNG\bin\${{ matrix.platform }}\Release"
           Compress-Archive -Path "$sourceDir\*" -DestinationPath ${{ steps.version.outputs.zipname }}
       
       - name: (09) Create release and upload asset
