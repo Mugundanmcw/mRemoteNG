@@ -49,7 +49,7 @@ jobs:
 
       - name: 06. Build Release
         shell: pwsh
-        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.arch }} -p:RuntimeIdentifier=win-${{ matrix.arch }}
+        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.arch }}
 
       - name: 07. Generate Version Info
         id: version
@@ -73,7 +73,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.zipname }}
-          path: ${{ github.workspace }}\mRemoteNG\bin\${{ matrix.arch }}\Release\win-${{matrix.arch }}\*
+          path: ${{ github.workspace }}\mRemoteNG\bin\${{ matrix.arch }}\Release
 
   Create-Release:
     needs: [Build-Release]
