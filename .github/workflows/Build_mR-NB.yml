@@ -16,7 +16,6 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.os }}
     outputs:
-      zipname: ${{ steps.version.outputs.zipname }}
       version: ${{ steps.version.outputs.version }}
       build: ${{ steps.version.outputs.build }}
     steps:
@@ -42,7 +41,6 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
-
       - name: 05. Restore NuGet Packages
         shell: pwsh
         run: dotnet restore
@@ -65,15 +63,16 @@ jobs:
           }
           $date = Get-Date -Format "ddMMyyyy"
           $zipName = "mRemoteNG-$version-(NB_$build)_$date-${{ matrix.arch }}.zip"
-          echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
+          Compress-Archive -Path "${{ github.workspace }}\mRemoteNG\bin\${{ matrix.arch }}\Release\*" -DestinationPath "$zipName"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "build=$build" >> $env:GITHUB_OUTPUT
+          echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
           
       - name: 08. Upload Release Output as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.zipname }}
-          path: ${{ github.workspace }}\mRemoteNG\bin\${{ matrix.arch }}\Release
+          name: build-zips
+          path: ${{ steps.version.outputs.zipname }}
 
   Create-Release:
     needs: [Build-Release]
@@ -84,19 +83,16 @@ jobs:
       - name: 01. Checkout Repository
         uses: actions/checkout@v4
         
-      - name: 02. Download Artifact
+      - name: 02. Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.Build-Release.outputs.zipname }}
+          name: build-zips
           path: ./
 
       - name: Debug Info
         run: |
-          echo "=== DEBUG: Job Outputs ==="
-          echo "Zipname: ${{ needs.Build-Release.outputs.zipname }}"
           echo "Version: ${{ needs.Build-Release.outputs.version }}"
           echo "Build: ${{ needs.Build-Release.outputs.build }}"
-          echo "=== DEBUG: Files ==="
           ls -la
           
       - name: 03. Create Release and Upload Asset
@@ -109,4 +105,4 @@ jobs:
             --title "mRemoteNG ${{ needs.Build-Release.outputs.version }} Build ${{ needs.Build-Release.outputs.build }}" \
             --notes "Development build of mRemoteNG version ${{ needs.Build-Release.outputs.version }}" \
             --prerelease \
-            "${{ needs.Build-Release.outputs.zipname }}"
+            ./*.zip
