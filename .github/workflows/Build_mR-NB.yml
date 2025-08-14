@@ -2,13 +2,21 @@ name: Build_and_Release_mR-NB
 on:
   push:
     branches:
-      - v1.78.2-dev
-  
+      - woa_native
+
 jobs:
   Build-and-Release:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
     env:
-          GH_TOKEN: ${{ secrets.GitHubActions }}
+      GH_TOKEN: ${{ secrets.GitHubActions }}
+
     steps:
       - name: (01) Checkout Repository
         uses: actions/checkout@v4
@@ -29,17 +37,17 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            ${{ runner.os }}-nuget-
+            ${{ runner.os }}-${{ matrix.arch }}-nuget-
             
       - name: (05) Restore NuGet Packages
         shell: pwsh
         run: dotnet restore
         
-      - name: (06) Build Release
+      - name: (06) Build Release (${{ matrix.arch }})
         shell: pwsh
-        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=x64 /verbosity:minimal
+        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.arch }} /verbosity:minimal
         
       - name: (07) Generate Version Info
         id: version
@@ -54,7 +62,7 @@ jobs:
             throw "Could not extract version and build number"
           }
           $date = Get-Date -Format "yyyyMMdd"
-          $zipName = "mRemoteNG-$date-v$version-NB-$build.zip"
+          $zipName = "mRemoteNG-$date-v$version-NB-$build-${{ matrix.arch }}.zip"
           echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "build=$build" >> $env:GITHUB_OUTPUT
@@ -62,10 +70,9 @@ jobs:
       - name: (08) Create Zip File
         shell: pwsh
         run: |
-          $sourceDir = "$Env:GITHUB_WORKSPACE\mRemoteNG\bin\x64\Release\win-x64"
+          $sourceDir = "$Env:GITHUB_WORKSPACE\mRemoteNG\bin\${{ matrix.arch }}\Release\win-${{ matrix.arch }}"
           Compress-Archive -Path "$sourceDir\*" -DestinationPath ${{ steps.version.outputs.zipname }}
           echo "File: ${{ steps.version.outputs.zipname }}"
-          echo "Token: secrets.GitHubActions"
           
       - name: (09) Create release and upload asset
         shell: bash
@@ -73,12 +80,9 @@ jobs:
           DATE=$(date +'%Y.%m.%d')
           TAG="${DATE}-v${{ steps.version.outputs.version }}-NB-${{ steps.version.outputs.build }}"
           ZIP="./${{ steps.version.outputs.zipname }}"
-          # Authenticate with GitHub CLI
-          gh auth login --with-token $env:GH_TOKEN
-          # Create release with attached asset
+          gh auth login --with-token <<< "${GH_TOKEN}"
           gh release create "$TAG" \
           --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
           --notes "Automated release from GitHub Actions" \
           --prerelease \
           "$ZIP"
-          echo "File: $ZIP"
