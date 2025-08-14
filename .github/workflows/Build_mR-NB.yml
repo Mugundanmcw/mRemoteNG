@@ -94,6 +94,5 @@ jobs:
           gh release create "$TAG" \
           --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
           --notes "Automated release from GitHub Actions" \
-          --prerelease \
-          "$ZIP"
-          echo "File: $ZIP"
+          --prerelease
+          gh release upload "$TAG" "$ZIP" --clobber
