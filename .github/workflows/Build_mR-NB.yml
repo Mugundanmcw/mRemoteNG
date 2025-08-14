@@ -1,55 +1,62 @@
-name: Build mR-NB
+name: Build_and_Release_mR-NB
 
 on:
   push:
     branches:
       - woa_native
-  
+
 jobs:
-  Build-Release:
+  Build-and-Release:
     strategy:
       matrix:
         include:
-          - os: windows-2022
+          - runner: windows-latest
+            platform: x64
             arch: x64
-          - os: windows-11-arm
+          - runner: windows-11-arm
+            platform: ARM64
             arch: arm64
-    runs-on: ${{ matrix.os }}
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      build: ${{ steps.version.outputs.build }}
+    
+    runs-on: ${{ matrix.runner }}
+    
+    env:
+      GH_TOKEN: ${{ secrets.GitHubActions }}
+    
     steps:
-      - name: 01. Checkout Repository
+      - name: (01) Checkout Repository
         uses: actions/checkout@v4
-
-      - name: 02. Setup MSBuild
+      
+      - name: (02) Setup MSBuild
         uses: microsoft/setup-msbuild@v2
         with:
-          vs-version: '17.14.11'
-          
-      - name: Install and run dotnet-t4 to transform T4 templates
+          vs-version: '17.14.12'
+      
+      - name: (03) Install and run dotnet-t4 to transform T4 templates
         shell: pwsh
         run: |
           dotnet tool install --global dotnet-t4
           $ttFile = "$env:GITHUB_WORKSPACE\mRemoteNG\Properties\AssemblyInfo.tt"
           t4 $ttFile
-  
-      - name: 04. Cache NuGet Packages
+      
+      - name: (04) Cache NuGet Packages
         uses: actions/cache@v3
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-nuget-
             ${{ runner.os }}-nuget-
-      - name: 05. Restore NuGet Packages
+      
+      - name: (05) Restore NuGet Packages
         shell: pwsh
         run: dotnet restore
-
-      - name: 06. Build Release
+      
+      - name: (06) Build Release
         shell: pwsh
-        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.arch }}
-
-      - name: 07. Generate Version Info
+        run: |
+          msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.platform }} /verbosity:minimal
+      
+      - name: (07) Generate Version Info
         id: version
         shell: pwsh
         run: |
@@ -61,48 +68,35 @@ jobs:
           } else {
             throw "Could not extract version and build number"
           }
-          $date = Get-Date -Format "ddMMyyyy"
-          $zipName = "mRemoteNG-$version-(NB_$build)_$date-${{ matrix.arch }}.zip"
-          Compress-Archive -Path "${{ github.workspace }}\mRemoteNG\bin\${{ matrix.arch }}\Release\*" -DestinationPath "$zipName"
+          $date = Get-Date -Format "yyyyMMdd"
+          $zipName = "mRemoteNG-$date-v$version-NB-$build-${{ matrix.arch }}.zip"
+          echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "build=$build" >> $env:GITHUB_OUTPUT
-          echo "zipname=$zipName" >> $env:GITHUB_OUTPUT
-          
-      - name: 08. Upload Release Output as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-zips
-          path: ${{ steps.version.outputs.zipname }}
-
-  Create-Release:
-    needs: [Build-Release]
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - name: 01. Checkout Repository
-        uses: actions/checkout@v4
-        
-      - name: 02. Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-zips
-          path: ./
-
-      - name: Debug Info
+      
+      - name: (08) Create Zip File
+        shell: pwsh
         run: |
-          echo "Version: ${{ needs.Build-Release.outputs.version }}"
-          echo "Build: ${{ needs.Build-Release.outputs.build }}"
-          ls -la
-          
-      - name: 03. Create Release and Upload Asset
+          $sourceDir = "$Env:GITHUB_WORKSPACE\mRemoteNG\bin\${{ matrix.platform }}\Release\win-${{ matrix.arch }}"
+          Compress-Archive -Path "$sourceDir\*" -DestinationPath ${{ steps.version.outputs.zipname }}
+      
+      - name: (09) Create release and upload asset
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ needs.Build-Release.outputs.version }}-${{ needs.Build-Release.outputs.build }}-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" \
-            --title "mRemoteNG ${{ needs.Build-Release.outputs.version }} Build ${{ needs.Build-Release.outputs.build }}" \
-            --notes "Development build of mRemoteNG version ${{ needs.Build-Release.outputs.version }}" \
-            --prerelease \
-            ./*.zip
+          DATE=$(date +'%Y.%m.%d')
+          TAG="${DATE}-v${{ steps.version.outputs.version }}-NB-${{ steps.version.outputs.build }}"
+          ZIP="./${{ steps.version.outputs.zipname }}"
+          
+          # Authenticate with GitHub CLI
+          echo "${{ secrets.GitHubActions }}" | gh auth login --with-token
+          
+          # Check if release already exists, create if it doesn't
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
+              --notes "Automated release from GitHub Actions" \
+              --prerelease
+          fi
+          
+          # Upload the asset to the existing release
+          gh release upload "$TAG" "$ZIP" --clobber
