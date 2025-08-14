@@ -79,8 +79,6 @@ jobs:
         run: |
           $sourceDir = "$Env:GITHUB_WORKSPACE\mRemoteNG\bin\${{ matrix.platform }}\Release"
           Compress-Archive -Path "$sourceDir\*" -DestinationPath ${{ steps.version.outputs.zipname }}
-          echo "File: ${{ steps.version.outputs.zipname }}"
-          echo "Token: secrets.GitHubActions"
       
       - name: (09) Create release and upload asset
         shell: bash
@@ -91,8 +89,10 @@ jobs:
           # Authenticate with GitHub CLI
           gh auth login --with-token $env:GH_TOKEN
           # Create release with attached asset
-          gh release create "$TAG" \
-          --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
-          --notes "Automated release from GitHub Actions" \
-          --prerelease
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
+              --notes "Automated release from GitHub Actions" \
+              --prerelease
+          fi
           gh release upload "$TAG" "$ZIP" --clobber
