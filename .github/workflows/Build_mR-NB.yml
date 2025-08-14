@@ -47,7 +47,7 @@ jobs:
         
       - name: (06) Build Release (${{ matrix.arch }})
         shell: pwsh
-        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.arch }} /verbosity:minimal
+        run: msbuild "$Env:GITHUB_WORKSPACE\mRemoteNG.sln" -p:Configuration="Release" -p:Platform=${{ matrix.arch }} -p:RuntimeIdentifier=win-${{ matrix.arch }}
         
       - name: (07) Generate Version Info
         id: version
