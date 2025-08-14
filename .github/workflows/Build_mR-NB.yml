@@ -86,9 +86,7 @@ jobs:
           DATE=$(date +'%Y.%m.%d')
           TAG="${DATE}-v${{ steps.version.outputs.version }}-NB-${{ steps.version.outputs.build }}"
           ZIP="./${{ steps.version.outputs.zipname }}"
-          # Authenticate with GitHub CLI
-          gh auth login --with-token $env:GH_TOKEN
-          # Create release with attached asset
+          echo "${{ secrets.GitHubActions }}" | gh auth login --with-token
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
