@@ -65,7 +65,7 @@ jobs:
             throw "Could not extract version and build number"
           }
           $date = Get-Date -Format "yyyyMMdd"
-          $zipName = "mRemoteNG-$date-v$version-NB-$build-${{ matrix.platform }}.zip"
+          $zipName = "mRemoteNG-$date-v$version-NB-$build-${{ matrix.arch }}.zip"
           $tag = "$date-v$version-NB-($build)"
           $message = git log -1 --pretty=%B
           echo "message=$message" >> $env:GITHUB_OUTPUT
