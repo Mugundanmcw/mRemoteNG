@@ -2,7 +2,7 @@ name: Build_and_Release_mR-NB
 on:
   push:
     branches:
-      - v1.78.2-dev
+      - fix_ci
       
 permissions:
   contents: write
@@ -65,7 +65,7 @@ jobs:
             throw "Could not extract version and build number"
           }
           $date = Get-Date -Format "yyyyMMdd"
-          $zipName = "mRemoteNG-$date-v$version-NB-$build-${{ matrix.arch }}.zip"
+          $zipName = "mRemoteNG-$date-v$version-NB-$build-${{ matrix.platform }}.zip"
           $tag = "$date-v$version-NB-($build)"
           $message = git log -1 --pretty=%B
           echo "message=$message" >> $env:GITHUB_OUTPUT
