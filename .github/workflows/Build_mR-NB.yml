@@ -116,21 +116,17 @@ jobs:
           Compress-Archive -Path "$sourceDir\*" -DestinationPath ${{ steps.version.outputs.zipname }}
           echo "File: ${{ steps.version.outputs.zipname }}"
 
-      - name: (10) Create release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-        with:
-          tag_name:  ${{ steps.version.outputs.tag }}
-          name: "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}"
-          files: ${{ steps.version.outputs.zipname }}
-          body: |
-            Changes in this Release:
-            ${{ steps.changelog.outputs.log }}
-
-            Last Commit Message:
-            ${{ steps.version.outputs.message }}
-
-          draft: false
-          prerelease: true
+      - name: (09) Create release and upload asset
+        shell: bash
+        run: |
+          DATE=$(date +'%Y.%m.%d')
+          TAG="${DATE}-v${{ steps.version.outputs.version }}-NB-${{ steps.version.outputs.build }}"
+          ZIP="./${{ steps.version.outputs.zipname }}"
+          echo "${{ secrets.GitHubActions }}" | gh auth login --with-token
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "mRemoteNG ${{ steps.version.outputs.version }} NB ${{ steps.version.outputs.build }}" \
+              --notes "Automated release from GitHub Actions" \
+              --prerelease
+          fi
+          gh release upload "$TAG" "$ZIP" --clobber
